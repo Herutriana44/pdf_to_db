@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Result Data - PDF to DB{% endblock %}
+{% block content %}
+<h1>Result Data</h1>
+<p class="muted">Cari, lihat, unduh, dan rename file hasil ekstraksi.</p>
+
+<div class="card">
+    <form method="get" action="{{ url_for('results') }}" style="display:flex;gap:0.5rem;">
+        <input type="text" name="q" value="{{ search_query }}" placeholder="Cari berdasarkan nama file atau CSV..." style="flex:1;">
+        <button type="submit">Cari</button>
+    </form>
+</div>
+
+<div class="card">
+    <h3 style="margin-top:0;">Hasil Ekstraksi ({{ data|length }} file)</h3>
+    {% if data %}
+    <table>
+        <thead>
+            <tr>
+                <th>CSV Filename</th>
+                <th>Rows</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in data %}
+            <tr data-filename="{{ item.csv_filename }}">
+                <td>
+                    <span class="csv-name">{{ item.csv_filename }}</span>
+                    <button type="button" class="btn-rename btn-secondary" style="margin-left:0.5rem;padding:0.25rem 0.5rem;font-size:0.8rem;">Rename</button>
+                </td>
+                <td>{{ item.row_count }}</td>
+                <td>
+                    <a href="{{ url_for('view_file', filename=item.csv_filename) }}" class="btn btn-secondary" style="text-decoration:none;display:inline-block;margin-right:0.5rem;">View</a>
+                    <a href="{{ url_for('download_file', filename=item.csv_filename) }}" class="btn" style="text-decoration:none;display:inline-block;">Download</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="muted">Belum ada hasil ekstraksi. <a href="{{ url_for('processing') }}">Upload PDF</a> untuk memulai.</p>
+    {% endif %}
+</div>
+
+<div id="rename-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center;">
+    <div class="card" style="max-width:400px;margin:1rem;">
+        <h3 style="margin-top:0;">Rename File</h3>
+        <p class="muted">Rename file hasil ekstraksi (di luar halaman processing).</p>
+        <form id="rename-form">
+            <input type="hidden" id="rename-old" name="old_name">
+            <p>
+                <label for="rename-new">Nama baru:</label><br>
+                <input type="text" id="rename-new" name="new_name" required>
+            </p>
+            <div style="display:flex;gap:0.5rem;">
+                <button type="submit">Simpan</button>
+                <button type="button" class="btn-secondary" id="rename-cancel">Batal</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.btn-rename').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const row = this.closest('tr');
+        const oldName = row.dataset.filename;
+        document.getElementById('rename-old').value = oldName;
+        document.getElementById('rename-new').value = oldName.replace(/\.csv$/i, '');
+        document.getElementById('rename-modal').style.display = 'flex';
+        document.getElementById('rename-new').focus();
+    });
+});
+
+document.getElementById('rename-cancel').addEventListener('click', () => {
+    document.getElementById('rename-modal').style.display = 'none';
+});
+
+document.getElementById('rename-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const oldName = document.getElementById('rename-old').value;
+    let newName = document.getElementById('rename-new').value.trim();
+    if (!newName.endsWith('.csv')) newName += '.csv';
+
+    const res = await fetch('{{ url_for("rename_file") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ old_name: oldName, new_name: newName })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+        location.reload();
+    } else {
+        alert(data.error || 'Gagal rename');
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block title %}Documents Processing - PDF to DB{% endblock %}
+{% block head %}
+<style>
+.loading-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 20, 25, 0.95);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+}
+.loading-overlay.visible {
+    display: flex;
+}
+.loading-content {
+    text-align: center;
+    padding: 2rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    max-width: 480px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+.loading-logs {
+    text-align: left;
+    margin-top: 1rem;
+    padding: 1rem;
+    background: var(--bg);
+    border-radius: 6px;
+    font-family: monospace;
+    font-size: 0.8rem;
+    max-height: 240px;
+    overflow-y: auto;
+}
+.loading-logs .log-line {
+    margin: 0.2rem 0;
+    color: var(--muted);
+}
+.loading-logs .log-line.error { color: var(--error); }
+.loading-spinner {
+    width: 48px;
+    height: 48px;
+    border: 4px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto;
+}
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+</style>
+{% endblock %}
+{% block content %}
+<h1>Documents Processing</h1>
+<p class="muted">Upload PDF untuk mengekstrak tabel. Dokumen hingga 700–800 halaman didukung.</p>
+
+<div class="card">
+    <form id="process-form" method="post" enctype="multipart/form-data">
+        <p>
+            <label for="pdf_file">Pilih file PDF:</label><br>
+            <input type="file" name="pdf_file" id="pdf_file" accept=".pdf" required>
+        </p>
+        <button type="submit" id="submit-btn">Extract Tables</button>
+    </form>
+</div>
+
+<div id="loading-overlay" class="loading-overlay">
+    <div class="loading-content">
+        <div class="loading-spinner"></div>
+        <h3 style="margin:1rem 0 0.5rem;">Processing PDF...</h3>
+        <p class="muted" style="margin:0;font-size:0.9rem;">Memecah halaman per halaman, lalu mengekstrak tabel.</p>
+        <div id="loading-logs" class="loading-logs">
+            <span class="log-line">Menunggu...</span>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h3 style="margin-top:0;">Flow</h3>
+    <ol style="color: var(--muted); font-size: 0.9rem;">
+        <li>Upload PDF</li>
+        <li>Split PDF menjadi 1 halaman per file</li>
+        <li>Extract Metadata (pymupdf)</li>
+        <li>Extract Tables per Page (pdfplumber)</li>
+        <li>Detect Multi-Page Table (Repeated Header Check)</li>
+        <li>Merge & Normalize Structure</li>
+        <li>Streaming Write to CSV</li>
+        <li>Save metadata (filename, start_page, end_page)</li>
+    </ol>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    var form = document.getElementById('process-form');
+    var overlay = document.getElementById('loading-overlay');
+    var submitBtn = document.getElementById('submit-btn');
+    var logsEl = document.getElementById('loading-logs');
+
+    function addLog(msg, isError) {
+        var line = document.createElement('div');
+        line.className = 'log-line' + (isError ? ' error' : '');
+        line.textContent = msg;
+        logsEl.appendChild(line);
+        logsEl.scrollTop = logsEl.scrollHeight;
+    }
+
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        if (document.getElementById('pdf_file').files.length === 0) return;
+
+        overlay.classList.add('visible');
+        submitBtn.disabled = true;
+        logsEl.innerHTML = '';
+        addLog('Memulai ekstraksi...');
+
+        var formData = new FormData(form);
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '{{ url_for("processing") }}');
+        xhr.setRequestHeader('Accept', 'text/event-stream');
+        xhr.responseType = 'text';
+
+        var streamBuffer = '';
+        var lastLen = 0;
+        var done = false;
+        function processStream() {
+            streamBuffer += xhr.responseText.slice(lastLen);
+            lastLen = xhr.responseText.length;
+            var parts = streamBuffer.split(/\n\n/);
+            streamBuffer = parts.pop() || '';
+            for (var i = 0; i < parts.length; i++) {
+                var line = parts[i].split('\n')[0];
+                if (line && line.indexOf('data: ') === 0) {
+                    try {
+                        var data = JSON.parse(line.slice(6));
+                        if (data.type === 'ping') continue;
+                        if (data.type === 'log') addLog(data.msg);
+                        else if (data.type === 'done') {
+                            addLog('[Selesai] ' + data.count + ' tabel diekstrak.');
+                            done = true;
+                            setTimeout(function() { window.location.href = '{{ url_for("results") }}'; }, 500);
+                            return;
+                        } else if (data.type === 'error') {
+                            addLog('ERROR: ' + data.error, true);
+                            submitBtn.disabled = false;
+                        }
+                    } catch (err) {}
+                }
+            }
+        }
+        xhr.onprogress = function() {
+            if (!done) processStream();
+        };
+
+        xhr.onload = function() {
+            if (!done) processStream();
+            if (xhr.status !== 200) {
+                try {
+                    var err = JSON.parse(xhr.responseText);
+                    addLog('ERROR: ' + (err.error || xhr.statusText), true);
+                } catch (_) {
+                    addLog('ERROR: ' + xhr.statusText, true);
+                }
+                submitBtn.disabled = false;
+            }
+        };
+
+        xhr.onerror = function() {
+            addLog('ERROR: Koneksi gagal.', true);
+            submitBtn.disabled = false;
+        };
+
+        xhr.send(formData);
+    });
+})();
+</script>
+{% endblock %}

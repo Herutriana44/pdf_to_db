@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}PDF to DB - Home{% endblock %}
+{% block content %}
+<h1>PDF to Database</h1>
+<p class="muted">Ekstrak tabel dari dokumen PDF menjadi file CSV dengan metadata.</p>
+
+<div class="card">
+    <h2 style="margin-top:0;">Documents Processing</h2>
+    <p>Upload PDF dan ekstrak tabel. Mendukung multi-page table detection (Repeated Header Check).</p>
+    <a href="{{ url_for('processing') }}" class="btn">Upload & Process PDF</a>
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0;">Result Data</h2>
+    <p>Cari, lihat, unduh, dan rename file hasil ekstraksi.</p>
+    <a href="{{ url_for('results') }}" class="btn">Lihat Hasil Ekstraksi</a>
+</div>
+{% endblock %}

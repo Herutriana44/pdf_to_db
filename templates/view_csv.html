@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}View {{ filename }} - PDF to DB{% endblock %}
+{% block content %}
+<h1>View: {{ filename }}</h1>
+<p class="muted">
+    {% if search_query %}
+        Hasil pencarian "{{ search_query }}" ({{ total_rows }} baris)
+    {% else %}
+        Total {{ total_rows }} baris
+    {% endif %}
+    <a href="{{ url_for('download_file', filename=filename) }}">Download full CSV</a>
+</p>
+
+<div class="card">
+    <form method="get" action="{{ url_for('view_file', filename=filename) }}" style="display:flex;gap:0.5rem;margin-bottom:1rem;">
+        <input type="hidden" name="page" value="1">
+        <input type="text" name="q" value="{{ search_query }}" placeholder="Cari nilai di file ini..." style="flex:1;">
+        <button type="submit">Cari</button>
+        {% if search_query %}
+        <a href="{{ url_for('view_file', filename=filename) }}" class="btn btn-secondary" style="text-decoration:none;">Reset</a>
+        {% endif %}
+    </form>
+</div>
+
+<div class="card" style="overflow-x:auto;">
+    {% if header %}
+    {% if total_rows == 0 %}
+    <p class="muted">{% if search_query %}Tidak ada baris yang mengandung "{{ search_query }}".{% else %}No data.{% endif %}</p>
+    {% else %}
+    <table>
+        <thead>
+            <tr>
+                {% for cell in header %}
+                <th>{{ cell }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                {% for cell in row %}
+                <td>{{ cell }}</td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="pagination" style="margin-top:1rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+        <span class="muted" style="margin-right:0.5rem;">
+            Baris {{ (page - 1) * per_page + 1 }}-{{ [page * per_page, total_rows]|min }} dari {{ total_rows }}
+        </span>
+        <span style="display:flex;gap:0.25rem;align-items:center;">
+            {% if page > 1 %}
+            <a href="{{ url_for('view_file', filename=filename, q=search_query or none, page=page-1, per_page=per_page) }}" class="btn btn-secondary" style="text-decoration:none;padding:0.25rem 0.5rem;">← Prev</a>
+            {% endif %}
+            {% for p in range(1, total_pages + 1) %}
+                {% if total_pages <= 9 or p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %}
+                    {% if p == page %}
+                    <span class="btn" style="opacity:0.8;cursor:default;">{{ p }}</span>
+                    {% else %}
+                    <a href="{{ url_for('view_file', filename=filename, q=search_query or none, page=p, per_page=per_page) }}" class="btn btn-secondary" style="text-decoration:none;padding:0.25rem 0.5rem;">{{ p }}</a>
+                    {% endif %}
+                {% elif p == page - 3 or p == page + 3 %}
+                <span class="muted">...</span>
+                {% endif %}
+            {% endfor %}
+            {% if page < total_pages %}
+            <a href="{{ url_for('view_file', filename=filename, q=search_query or none, page=page+1, per_page=per_page) }}" class="btn btn-secondary" style="text-decoration:none;padding:0.25rem 0.5rem;">Next →</a>
+            {% endif %}
+        </span>
+        <form method="get" action="{{ url_for('view_file', filename=filename) }}" style="display:flex;align-items:center;gap:0.25rem;margin-left:auto;">
+            <input type="hidden" name="q" value="{{ search_query }}">
+            <input type="hidden" name="page" value="1">
+            <label class="muted" style="font-size:0.85rem;">Per halaman:</label>
+            <select name="per_page" onchange="this.form.submit()" style="padding:0.25rem;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;">
+                <option value="25" {% if per_page == 25 %}selected{% endif %}>25</option>
+                <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
+                <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
+            </select>
+        </form>
+    </div>
+    {% endif %}
+    {% else %}
+    <p class="muted">No data.</p>
+    {% endif %}
+</div>
+<p><a href="{{ url_for('results') }}" class="btn btn-secondary">← Kembali ke Result Data</a></p>
+{% endblock %}

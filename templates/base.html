@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}PDF to DB{% endblock %}</title>
+    <style>
+        :root {
+            --bg: #0f1419;
+            --surface: #1a2332;
+            --border: #2d3a4d;
+            --text: #e6edf3;
+            --muted: #8b949e;
+            --accent: #58a6ff;
+            --success: #3fb950;
+            --error: #f85149;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 2rem;
+            line-height: 1.6;
+        }
+        .container { max-width: 900px; margin: 0 auto; }
+        nav {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+        nav a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+        nav a:hover { text-decoration: underline; }
+        .flash { padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem; }
+        .flash.success { background: rgba(63, 185, 80, 0.2); color: var(--success); }
+        .flash.error { background: rgba(248, 81, 73, 0.2); color: var(--error); }
+        h1 { font-size: 1.5rem; margin-top: 0; }
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        input[type="text"], input[type="file"] {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.95rem;
+        }
+        input[type="file"] { padding: 0.5rem 0; }
+        button, .btn {
+            background: var(--accent);
+            color: var(--bg);
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.95rem;
+        }
+        button:hover, .btn:hover { opacity: 0.9; }
+        .btn-secondary { background: var(--border); color: var(--text); }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border); }
+        th { color: var(--muted); font-weight: 500; }
+        .muted { color: var(--muted); font-size: 0.9rem; }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <div class="container">
+        <nav>
+            <a href="{{ url_for('index') }}">Home</a>
+            <a href="{{ url_for('processing') }}">Documents Processing</a>
+            <a href="{{ url_for('results') }}">Result Data</a>
+        </nav>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="flash {{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </div>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
