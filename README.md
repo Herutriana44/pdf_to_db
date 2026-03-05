@@ -22,6 +22,37 @@ python app.py
 
 Buka http://localhost:5000 di browser.
 
+## Menjalankan di Google Colab (dengan ngrok)
+
+1. Buka [Google Colab](https://colab.research.google.com) dan buat notebook baru
+2. Daftar gratis di [ngrok](https://ngrok.com) → Dashboard → Copy auth token
+3. Jalankan cell berikut:
+
+```python
+# Set token ngrok (dapatkan di https://dashboard.ngrok.com/get-started/your-authtoken)
+import os
+os.environ["NGROK_AUTH_TOKEN"] = "your_token_here"
+
+# Clone, install, run
+!git clone https://github.com/Herutriana44/pdf_to_db.git
+%cd pdf_to_db
+!pip install -q -r requirements.txt pyngrok
+
+# Jalankan Flask di background
+import threading, time
+def run(): from app import app; app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
+threading.Thread(target=run, daemon=True).start()
+time.sleep(4)
+
+# Port forwarding dengan ngrok
+from pyngrok import ngrok
+ngrok.set_auth_token(os.environ["NGROK_AUTH_TOKEN"])
+url = ngrok.connect(5000)
+print(f"Akses web: {url}")
+```
+
+4. Buka URL yang ditampilkan untuk mengakses aplikasi dari browser mana pun
+
 ## Flow (sesuai diagram)
 
 1. **User Access Web** → Home
@@ -35,6 +66,8 @@ UI loading ditampilkan saat processing berjalan (dokumen besar dapat memakan wak
 ```
 pdf_to_db/
 ├── app.py              # Flask web app
+├── colab_run.ipynb     # Notebook untuk Google Colab
+├── run_colab.py        # Script alternatif untuk Colab
 ├── config.py           # Konfigurasi
 ├── pdf_extractor.py    # Ekstraksi PDF (pymupdf + pdfplumber)
 ├── requirements.txt
