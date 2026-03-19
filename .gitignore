@@ -13,4 +13,5 @@ __pycache__/
 *.pyzwzwzw
 
 uploads/
-output/
+
+pdf_to_db.zip

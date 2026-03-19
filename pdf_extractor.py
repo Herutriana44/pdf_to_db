@@ -46,12 +46,22 @@ def _deduplicate_chars(s: str) -> str:
     Example: 'DDEESSKKRRIIPPSSII KKOODDEE IINNAA--CCBBGG' -> 'DESKRIPSI KODE INA-CBG'
     Detects alternating duplicate pattern (s[0::2] == s[1::2]) and collapses to single chars.
     Handles multiple levels of duplication (e.g. 4x -> 2x -> 1x).
+
+    Proses per kata (split by whitespace) karena spasi antar kata sering tidak diduplikasi
+    oleh ekstraktor PDF, sehingga string gabungan punya panjang ganjil atau pola putus.
+    Contoh gagal: 'PPRROOSSEEDDUURR BBEESSAARR' (spasi tunggal) -> proses per kata berhasil.
     """
     if not s:
         return s
-    while len(s) >= 2 and len(s) % 2 == 0 and s[0::2] == s[1::2]:
-        s = s[0::2]
-    return s
+
+    def _dedup_token(t: str) -> str:
+        while len(t) >= 2 and len(t) % 2 == 0 and t[0::2] == t[1::2]:
+            t = t[0::2]
+        return t
+
+    # Pisah by whitespace, dedup tiap token, gabung lagi (preserve separator)
+    parts = re.split(r"(\s+)", s)
+    return "".join(_dedup_token(p) if not re.match(r"^\s+$", p) else p for p in parts)
 
 
 def _normalize_cell(cell: Any) -> str:
