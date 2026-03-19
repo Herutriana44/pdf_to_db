@@ -11,6 +11,28 @@
     <a href="{{ url_for('download_file', filename=filename) }}">Download full CSV</a>
 </p>
 
+{% if header %}
+<div class="card">
+    <h3 style="margin-top:0;">Post-processing: Deduplikasi Karakter</h3>
+    <p class="muted" style="font-size:0.9rem;margin-bottom:1rem;">Terapkan deduplikasi karakter (mis. DDEESSKKRRIIPPSSII → DESKRIPSI) pada kolom pilihan.</p>
+    <form method="post" action="{{ url_for('deduplicate_columns', filename=filename) }}" style="margin-bottom:1rem;">
+        <fieldset style="border:none;padding:0;margin:0;">
+            <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;cursor:pointer;">
+                <input type="radio" name="column" value="all">
+                <span>Semua kolom</span>
+            </label>
+            {% for i in range(header|length) %}
+            <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;cursor:pointer;">
+                <input type="radio" name="column" value="{{ i }}">
+                <span>Kolom {{ i + 1 }}: {{ header[i] or '(kosong)' }}</span>
+            </label>
+            {% endfor %}
+        </fieldset>
+        <button type="submit" class="btn" style="margin-top:0.75rem;">Terapkan deduplikasi</button>
+    </form>
+</div>
+{% endif %}
+
 <div class="card">
     <form method="get" action="{{ url_for('view_file', filename=filename) }}" style="display:flex;gap:0.5rem;margin-bottom:1rem;">
         <input type="hidden" name="page" value="1">

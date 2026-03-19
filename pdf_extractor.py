@@ -100,6 +100,52 @@ def _postprocess_csv_file(csv_path: str, log_callback: Optional[Callable[[str], 
         raise e
 
 
+def deduplicate_chars_columns(
+    csv_path: str,
+    column_indices: List[int],
+    log_callback: Optional[Callable[[str], None]] = None,
+) -> None:
+    """
+    Apply _deduplicate_chars only to specified columns (second post-processing).
+    column_indices: 0-based column indices. Empty list = no-op.
+    """
+    if not column_indices:
+        return
+
+    def log(msg: str) -> None:
+        if log_callback:
+            log_callback(msg)
+        logger.info(msg)
+
+    output_dir = os.path.dirname(csv_path)
+    temp_fd, temp_path = tempfile.mkstemp(suffix=".csv", prefix="pdf2db_", dir=output_dir)
+    try:
+        with os.fdopen(temp_fd, "w", newline="", encoding="utf-8") as out_f:
+            writer = csv.writer(out_f)
+            with open(csv_path, "r", encoding="utf-8", errors="ignore") as in_f:
+                reader = csv.reader(in_f)
+                row_count = 0
+                for row in reader:
+                    processed = []
+                    for i, cell in enumerate(row):
+                        s = str(cell).strip().replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+                        s = re.sub(r"\s+", " ", s)
+                        if i in column_indices:
+                            s = _deduplicate_chars(s)
+                        processed.append(s)
+                    writer.writerow(processed)
+                    row_count += 1
+        os.replace(temp_path, csv_path)
+        log(f"  [Deduplicate] {os.path.basename(csv_path)}: kolom {column_indices}, {row_count} baris")
+    except Exception as e:
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+        raise e
+
+
 def split_pdf_to_pages(
     pdf_path: str,
     pages_dir: str,

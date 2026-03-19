@@ -22,7 +22,7 @@ from flask import (
     send_file,
 )
 from config import UPLOAD_FOLDER, PAGES_FOLDER, OUTPUT_FOLDER, ALLOWED_EXTENSIONS, MAX_CONTENT_LENGTH
-from pdf_extractor import extract_tables_from_pdf, extract_metadata_pymupdf
+from pdf_extractor import extract_tables_from_pdf, extract_metadata_pymupdf, deduplicate_chars_columns
 
 logging.basicConfig(
     level=logging.INFO,
@@ -231,6 +231,45 @@ def download_file(filename):
     if not os.path.isfile(path):
         return "File not found", 404
     return send_file(path, as_attachment=True, download_name=filename)
+
+
+@app.route("/results/view/<path:filename>/deduplicate", methods=["POST"])
+def deduplicate_columns(filename):
+    """Apply _deduplicate_chars to selected column(s) (second post-processing)."""
+    path = os.path.join(OUTPUT_FOLDER, secure_filename(filename))
+    if not os.path.isfile(path):
+        flash("File not found.", "error")
+        return redirect(url_for("view_file", filename=filename))
+
+    column_val = request.form.get("column")
+    if not column_val:
+        flash("Pilih kolom yang ingin dideduplikasi.", "error")
+        return redirect(url_for("view_file", filename=filename))
+
+    try:
+        import csv as csv_module
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            reader = csv_module.reader(f)
+            header = next(reader, [])
+        num_cols = len(header)
+
+        if column_val == "all":
+            indices = list(range(num_cols))
+        else:
+            idx = int(column_val)
+            if idx < 0 or idx >= num_cols:
+                raise ValueError("Index kolom tidak valid")
+            indices = [idx]
+
+        deduplicate_chars_columns(path, indices)
+        flash("Deduplikasi karakter berhasil diterapkan.", "success")
+    except (ValueError, IndexError) as e:
+        flash(f"Kolom tidak valid: {e}", "error")
+    except Exception as e:
+        app.logger.exception("Deduplicate failed")
+        flash(f"Gagal: {str(e)}", "error")
+
+    return redirect(url_for("view_file", filename=filename))
 
 
 @app.route("/results/view/<path:filename>")
