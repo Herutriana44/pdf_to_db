@@ -16,6 +16,9 @@ import pdfplumber
 
 logger = logging.getLogger(__name__)
 
+# Kolom metadata tambahan (setelah page + bbox)
+META_TENTANG_COLS = ("tentang", "tipe_regional", "kelas_rs", "tipe_rs", "rawat_jalan")
+
 
 def _normalize_row(row: List[Any]) -> Tuple[str, ...]:
     """Normalize row for header comparison (strip, lower, collapse whitespace)."""
@@ -38,6 +41,125 @@ def _headers_match(header_a: List[Any], header_b: List[Any], threshold: float = 
         return False
     matches = sum(1 for a, b in zip(norm_a, norm_b) if a and b and a == b)
     return matches / max(len(norm_a), 1) >= threshold
+
+
+def _words_to_multiline_text(words: List[dict]) -> str:
+    """Gabungkan kata-kata menjadi teks multi-baris (urut baris lalu kiri-ke-kanan)."""
+    if not words:
+        return ""
+    words = sorted(words, key=lambda w: (w.get("top", 0), w.get("x0", 0)))
+    lines: List[List[dict]] = []
+    current: List[dict] = [words[0]]
+    for w in words[1:]:
+        if abs(w.get("top", 0) - current[-1].get("top", 0)) < 4:
+            current.append(w)
+        else:
+            lines.append(sorted(current, key=lambda x: x.get("x0", 0)))
+            current = [w]
+    lines.append(sorted(current, key=lambda x: x.get("x0", 0)))
+    return "\n".join(" ".join(x.get("text", "") for x in ln).strip() for ln in lines if ln).strip()
+
+
+def _extract_text_above_table(
+    page: Any,
+    table_bbox: Tuple[float, float, float, float],
+    words: List[dict],
+) -> str:
+    """
+    Ambil teks di atas tepi atas tabel (biasanya judul/region/kelas).
+    Koordinat pdfplumber: y ke bawah; teks di atas tabel punya bottom <= top tabel.
+    """
+    if not words:
+        return ""
+    x0, top, x1, bottom = table_bbox if len(table_bbox) >= 4 else (0, 0, 0, 0)
+    if x0 == x1 == top == bottom == 0:
+        return _extract_text_top_region(page, words)
+
+    margin = 8.0
+    above: List[dict] = []
+    for w in words:
+        try:
+            w_bottom = float(w.get("bottom", 0))
+        except (TypeError, ValueError):
+            continue
+        if w_bottom <= float(top) + 1.5:
+            wx0, wx1 = float(w.get("x0", 0)), float(w.get("x1", 0))
+            if wx1 >= x0 - margin and wx0 <= x1 + margin:
+                above.append(w)
+
+    if not above:
+        return ""
+
+    return _words_to_multiline_text(above)
+
+
+def _extract_text_top_region(page: Any, words: List[dict]) -> str:
+    """Fallback jika bbox tabel tidak valid: ambil teks di ~35% tinggi halaman atas."""
+    if not words:
+        return ""
+    h = float(getattr(page, "height", 0) or 0)
+    if h <= 0:
+        return _words_to_multiline_text(words[: min(80, len(words))])
+    cutoff = h * 0.35
+    top_words = [w for w in words if float(w.get("bottom", 0)) <= cutoff]
+    return _words_to_multiline_text(top_words) if top_words else ""
+
+
+def parse_tentang_metadata(tentang: str) -> dict:
+    """
+    Parse teks konteks (tentang) menjadi field terstruktur.
+    Contoh: REGIONAL 5, KELAS A, SWASTA, RAWAT JALAN.
+    """
+    raw = (tentang or "").replace("\r", "\n")
+    single_line = re.sub(r"\s+", " ", raw.replace("\n", " ")).strip()
+    t = single_line.upper()
+
+    tipe_regional = ""
+    m = re.search(r"REGIONAL\s*(\d+)", t, re.I)
+    if m:
+        tipe_regional = f"REGIONAL {m.group(1)}"
+
+    kelas_rs = ""
+    m = re.search(r"KELAS\s+([A-Z])\b", t, re.I)
+    if m:
+        kelas_rs = m.group(1).upper()
+
+    tipe_rs = ""
+    if re.search(r"\bSWASTA\b", t, re.I):
+        tipe_rs = "SWASTA"
+    elif re.search(r"\bPEMERINTAH\b", t, re.I):
+        tipe_rs = "PEMERINTAH"
+    elif re.search(r"\bBLU\b", t, re.I):
+        tipe_rs = "BLU"
+
+    rawat_jalan = ""
+    if re.search(r"RAWAT\s+JALAN", t, re.I):
+        rawat_jalan = "RAWAT JALAN"
+    elif re.search(r"RAWAT\s+INAP", t, re.I):
+        rawat_jalan = "RAWAT INAP"
+    elif re.search(r"\bIGD\b", t, re.I):
+        rawat_jalan = "IGD"
+
+    return {
+        "tentang": single_line,
+        "tipe_regional": tipe_regional,
+        "kelas_rs": kelas_rs,
+        "tipe_rs": tipe_rs,
+        "rawat_jalan": rawat_jalan,
+    }
+
+
+def _slug_for_filename(tentang: str, fallback_stem: str) -> str:
+    """Nama file aman dari teks tentang (tanpa newline)."""
+    s = (tentang or "").replace("\r", " ").replace("\n", " ")
+    s = re.sub(r"\s+", " ", s).strip()
+    s = re.sub(r"[^\w\s\-]", "", s, flags=re.UNICODE)
+    s = re.sub(r"[\s\-]+", "_", s).strip("_")
+    if not s or len(s) < 2:
+        s = re.sub(r"[^\w\-]", "_", fallback_stem, flags=re.UNICODE) or "table"
+    if len(s) > 100:
+        s = s[:100].rstrip("_")
+    return s
 
 
 def _deduplicate_chars(s: str) -> str:
@@ -238,15 +360,16 @@ def extract_tables_from_pdf(
     log("[Phase 0] Memecah PDF menjadi 1 halaman per file...")
     page_paths = split_pdf_to_pages(pdf_path, pages_dir, log_callback=log_callback)
 
-    # Phase 1: Extract tables per page with position metadata (bbox)
-    log("[Phase 1] Mengekstrak tabel dari setiap halaman (dengan metadata posisi)...")
-    page_tables: List[Tuple[int, Tuple[float, float, float, float], List[List[Any]]]] = []
+    # Phase 1: Extract tables per page with position metadata (bbox) + teks di atas tabel
+    log("[Phase 1] Mengekstrak tabel dari setiap halaman (dengan metadata posisi + tentang)...")
+    page_tables: List[Tuple[int, Tuple[float, float, float, float], List[List[Any]], str]] = []
     total_pages = len(page_paths)
     for page_num, page_path in enumerate(page_paths, start=1):
         with pdfplumber.open(page_path) as pdf:
             if len(pdf.pages) == 0:
                 continue
             page = pdf.pages[0]
+            words = page.extract_words() or []
             found = page.find_tables(table_settings=table_settings)
             for table_obj in found:
                 try:
@@ -255,11 +378,13 @@ def extract_tables_from_pdf(
                 except Exception:
                     continue
                 if table_data and len(table_data) >= 2 and bbox:
-                    page_tables.append((page_num, bbox, table_data))
+                    tentang = _extract_text_above_table(page, bbox, words)
+                    page_tables.append((page_num, bbox, table_data, tentang))
             if not found:
                 for table in page.extract_tables(table_settings=table_settings):
                     if table and len(table) >= 2:
-                        page_tables.append((page_num, (0, 0, 0, 0), table))
+                        tentang = _extract_text_top_region(page, words) if words else ""
+                        page_tables.append((page_num, (0, 0, 0, 0), table, tentang))
         if page_num % 50 == 0 or page_num == total_pages:
             log(f"[Phase 1] Ekstraksi halaman {page_num}/{total_pages} selesai (tabel terdeteksi: {len(page_tables)})")
 
@@ -279,7 +404,7 @@ def extract_tables_from_pdf(
     # Phase 2: Detect multi-page tables (Repeated Header Check) & merge
     log("[Phase 2] Mendeteksi dan menggabungkan multi-page table...")
     merged_tables: List[dict] = []
-    for page_num, bbox, table in page_tables:
+    for page_num, bbox, table, tentang in page_tables:
         header = table[0]
         data_rows = table[1:]
         x0, top, x1, bottom = bbox if len(bbox) >= 4 else (0, 0, 0, 0)
@@ -299,17 +424,24 @@ def extract_tables_from_pdf(
                 "rows": [(page_num, x0, top, x1, bottom, row) for row in data_rows],
                 "start_page": page_num,
                 "end_page": page_num,
+                "tentang": tentang or "",
             })
 
     log(f"[Phase 2] Selesai. {len(merged_tables)} tabel terdeteksi (setelah merge).")
 
-    # Phase 3: Streaming write to CSV
-    log("[Phase 3] Menulis hasil ke CSV...")
+    # Phase 3: Tulis CSV dengan kolom tentang + rename file berdasarkan tentang + urutan 3 digit
+    log("[Phase 3] Menulis hasil ke CSV (kolom tentang + penamaan file)...")
     all_extracted: List[dict] = []
     for i, mt in enumerate(merged_tables):
-        csv_name = f"{base_name}_table_{i}.csv" if i > 0 else f"{base_name}_table.csv"
+        seq = i + 1
+        meta = parse_tentang_metadata(mt.get("tentang") or "")
+        slug = _slug_for_filename(meta["tentang"], base_name)
+        csv_name = f"{slug}_{seq:03d}.csv"
         csv_path = os.path.join(output_dir, csv_name)
-        _write_merged_table(mt, filename, csv_path, csv_name, all_extracted)
+        if os.path.exists(csv_path):
+            csv_name = f"{base_name}_{slug}_{seq:03d}.csv"
+            csv_path = os.path.join(output_dir, csv_name)
+        _write_merged_table(mt, filename, csv_path, csv_name, all_extracted, meta)
         log(f"  -> {csv_name} (halaman {mt['start_page']}-{mt['end_page']}, {len(mt['rows'])} baris)")
 
     # Phase 4: Postprocess each CSV (deduplicate chars, row by row)
@@ -327,23 +459,35 @@ def _write_merged_table(
     csv_path: str,
     csv_name: str,
     all_extracted: List[dict],
+    meta: Optional[dict] = None,
 ) -> None:
-    """Write a merged table to CSV with metadata posisi tabel (page, bbox)."""
+    """Write a merged table to CSV with metadata posisi tabel, tentang, dan field parse."""
     header = table_data["header"]
     rows = table_data["rows"]
+    meta = meta or parse_tentang_metadata(table_data.get("tentang") or "")
 
-    out_header = ["page", "bbox_x0", "bbox_top", "bbox_x1", "bbox_bottom"] + [
-        _normalize_cell(c) or f"col_{i}" for i, c in enumerate(header)
-    ]
+    out_header = (
+        ["page", "bbox_x0", "bbox_top", "bbox_x1", "bbox_bottom"]
+        + list(META_TENTANG_COLS)
+        + [_normalize_cell(c) or f"col_{i}" for i, c in enumerate(header)]
+    )
 
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(out_header)
         for row in rows:
             page_num, x0, top, x1, bottom, row_data = row
-            out_row = [page_num, round(x0, 1), round(top, 1), round(x1, 1), round(bottom, 1)] + [
-                _normalize_cell(c) for c in row_data
-            ]
+            out_row = (
+                [page_num, round(x0, 1), round(top, 1), round(x1, 1), round(bottom, 1)]
+                + [
+                    meta.get("tentang", ""),
+                    meta.get("tipe_regional", ""),
+                    meta.get("kelas_rs", ""),
+                    meta.get("tipe_rs", ""),
+                    meta.get("rawat_jalan", ""),
+                ]
+                + [_normalize_cell(c) for c in row_data]
+            )
             writer.writerow(out_row)
 
     all_extracted.append({

@@ -41,6 +41,53 @@ def allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+MAX_VALUE_SEARCH_HITS = 500
+
+
+def search_csv_rows_by_value(query: str) -> tuple:
+    """
+    Cari substring di semua sel CSV di OUTPUT_FOLDER.
+    Returns (list of dicts, truncated: bool).
+    """
+    import csv as csv_module
+
+    q = (query or "").strip().lower()
+    if not q:
+        return [], False
+
+    results = []
+    truncated = False
+    if not os.path.isdir(OUTPUT_FOLDER):
+        return [], False
+
+    for fname in sorted(os.listdir(OUTPUT_FOLDER)):
+        if not fname.endswith(".csv"):
+            continue
+        path = os.path.join(OUTPUT_FOLDER, fname)
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as fp:
+                reader = csv_module.reader(fp)
+                header = next(reader, [])
+                for row_idx, row in enumerate(reader, start=2):
+                    if any(q in str(c or "").lower() for c in row):
+                        preview = " | ".join(str(c or "")[:100] for c in row[:12])
+                        if len(preview) > 400:
+                            preview = preview[:400] + "…"
+                        results.append({
+                            "csv_filename": fname,
+                            "row_number": row_idx,
+                            "preview": preview,
+                            "header": header,
+                        })
+                        if len(results) >= MAX_VALUE_SEARCH_HITS:
+                            truncated = True
+                            return results, truncated
+        except Exception:
+            continue
+
+    return results, truncated
+
+
 def get_extracted_metadata() -> list:
     """Scan output folder and build index from CSV files."""
     import csv as csv_module
@@ -180,15 +227,35 @@ def processing():
 
 @app.route("/results")
 def results():
-    """Result data page - search and view extracted data."""
+    """Result data page - search by filename and optional cross-file value search."""
     data = get_extracted_metadata()
     query = request.args.get("q", "").strip().lower()
+    value_query = request.args.get("value_q", "").strip()
+
     if query:
         data = [
             d for d in data
             if query in (d.get("csv_filename") or "").lower()
         ]
-    return render_template("results.html", data=data, search_query=query)
+
+    value_hits = []
+    value_truncated = False
+    if value_query:
+        value_hits, value_truncated = search_csv_rows_by_value(value_query)
+        if query:
+            value_hits = [
+                h for h in value_hits
+                if query in (h.get("csv_filename") or "").lower()
+            ]
+
+    return render_template(
+        "results.html",
+        data=data,
+        search_query=query,
+        value_query=value_query,
+        value_hits=value_hits,
+        value_truncated=value_truncated,
+    )
 
 
 @app.route("/results/rename", methods=["POST"])

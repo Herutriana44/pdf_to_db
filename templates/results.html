@@ -2,14 +2,58 @@
 {% block title %}Result Data - PDF to DB{% endblock %}
 {% block content %}
 <h1>Result Data</h1>
-<p class="muted">Cari, lihat, unduh, dan rename file hasil ekstraksi.</p>
+<p class="muted">Cari, lihat, unduh, dan rename file hasil ekstraksi. Pencarian nilai mencari di semua baris semua file.</p>
 
 <div class="card">
+    <form method="get" action="{{ url_for('results') }}" style="display:flex;gap:0.5rem;margin-bottom:0.75rem;">
+        <input type="hidden" name="value_q" value="{{ value_query or '' }}">
+        <input type="text" name="q" value="{{ search_query }}" placeholder="Cari berdasarkan nama file CSV..." style="flex:1;">
+        <button type="submit">Cari file</button>
+    </form>
     <form method="get" action="{{ url_for('results') }}" style="display:flex;gap:0.5rem;">
-        <input type="text" name="q" value="{{ search_query }}" placeholder="Cari berdasarkan nama file atau CSV..." style="flex:1;">
-        <button type="submit">Cari</button>
+        <input type="hidden" name="q" value="{{ search_query or '' }}">
+        <input type="text" name="value_q" value="{{ value_query or '' }}" placeholder="Search by value (isi sel di semua file)..." style="flex:1;">
+        <button type="submit">Cari nilai</button>
+        {% if value_query %}
+        <a href="{{ url_for('results', q=search_query or none) }}" class="btn btn-secondary" style="text-decoration:none;">Reset nilai</a>
+        {% endif %}
     </form>
 </div>
+
+{% if value_query %}
+<div class="card">
+    <h3 style="margin-top:0;">Hasil pencarian nilai "{{ value_query }}"</h3>
+    {% if value_truncated %}
+    <p class="muted">Dibatasi {{ value_hits|length }} baris pertama (maks. pencarian).</p>
+    {% endif %}
+    {% if value_hits %}
+    <table>
+        <thead>
+            <tr>
+                <th>File</th>
+                <th>Baris CSV</th>
+                <th>Preview baris</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for hit in value_hits %}
+            <tr>
+                <td><span class="csv-name">{{ hit.csv_filename }}</span></td>
+                <td>{{ hit.row_number }}</td>
+                <td style="font-size:0.85rem;max-width:28rem;word-break:break-word;">{{ hit.preview }}</td>
+                <td>
+                    <a href="{{ url_for('view_file', filename=hit.csv_filename) }}" class="btn btn-secondary" style="text-decoration:none;font-size:0.85rem;">View</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="muted">Tidak ada baris yang mengandung nilai tersebut.</p>
+    {% endif %}
+</div>
+{% endif %}
 
 <div class="card">
     <h3 style="margin-top:0;">Hasil Ekstraksi ({{ data|length }} file)</h3>
