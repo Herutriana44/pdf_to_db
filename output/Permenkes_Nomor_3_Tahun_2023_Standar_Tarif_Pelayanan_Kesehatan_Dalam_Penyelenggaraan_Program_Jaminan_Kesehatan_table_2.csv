@@ -1,8 +1,0 @@
-page,bbox_x0,bbox_top,bbox_x1,bbox_bottom,col_0,Rasio dokter,col_2,Ketersediaan dokter gigi,Besaran Tarif
-6,226.9,578.0,524.5,862.1,,terhadap,,,
-6,226.9,578.0,524.5,862.1,,jumlah,,,
-6,226.9,578.0,524.5,862.1,,peserta,,,
-6,226.9,578.0,524.5,862.1,Tersedia dokter dengan rasio 1:≤5000,,,Tersedia dokter gigi,"Rp12.000,00 (dua belas ribu rupiah)"
-6,226.9,578.0,524.5,862.1,Tersedia dokter dengan rasio 1:≤5000,,,Tidak Tersedia dokter gigi,"Rp10.000,00 (sepuluh ribu rupiah)"
-6,226.9,578.0,524.5,862.1,Tersedia dokter dengan rasio 1:>5000,,,Tersedia dokter gigi,"Rp11.000,00 (sebelas ribu rupiah)"
-6,226.9,578.0,524.5,862.1,Tersedia dokter dengan rasio 1:>5000,,,Tidak Tersedia dokter gigi,"Rp9.000,00 (sembilan ribu rupiah)"
