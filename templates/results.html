@@ -1,5 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Result Data - PDF to DB{% endblock %}
+{% block head %}
+<style>
+    a.btn-view.viewed {
+        background: rgba(63, 185, 80, 0.22);
+        color: var(--success);
+        border: 1px solid rgba(63, 185, 80, 0.45);
+    }
+    a.btn-view.viewed:hover { opacity: 0.92; }
+</style>
+{% endblock %}
 {% block content %}
 <h1>Result Data</h1>
 <p class="muted">Cari, lihat, unduh, dan rename file hasil ekstraksi. Pencarian nilai mencari di semua baris semua file.</p>
@@ -43,7 +53,7 @@
                 <td>{{ hit.row_number }}</td>
                 <td style="font-size:0.85rem;max-width:28rem;word-break:break-word;">{{ hit.preview }}</td>
                 <td>
-                    <a href="{{ url_for('view_file', filename=hit.csv_filename) }}" class="btn btn-secondary" style="text-decoration:none;font-size:0.85rem;">View</a>
+                    <a href="{{ url_for('view_file', filename=hit.csv_filename) }}" class="btn btn-secondary btn-view" data-filename="{{ hit.csv_filename }}" style="text-decoration:none;font-size:0.85rem;">View</a>
                 </td>
             </tr>
             {% endfor %}
@@ -75,7 +85,7 @@
                 </td>
                 <td>{{ item.row_count }}</td>
                 <td>
-                    <a href="{{ url_for('view_file', filename=item.csv_filename) }}" class="btn btn-secondary" style="text-decoration:none;display:inline-block;margin-right:0.5rem;">View</a>
+                    <a href="{{ url_for('view_file', filename=item.csv_filename) }}" class="btn btn-secondary btn-view" data-filename="{{ item.csv_filename }}" style="text-decoration:none;display:inline-block;margin-right:0.5rem;">View</a>
                     <a href="{{ url_for('download_file', filename=item.csv_filename) }}" class="btn" style="text-decoration:none;display:inline-block;">Download</a>
                 </td>
             </tr>
@@ -108,6 +118,35 @@
 
 {% block scripts %}
 <script>
+(function () {
+    var KEY = 'pdf_to_db_viewed_csvs';
+    function getViewed() {
+        try {
+            var raw = localStorage.getItem(KEY);
+            var arr = raw ? JSON.parse(raw) : [];
+            return Array.isArray(arr) ? arr : [];
+        } catch (e) {
+            return [];
+        }
+    }
+    function markViewed(name) {
+        if (!name) return;
+        var set = new Set(getViewed());
+        set.add(name);
+        localStorage.setItem(KEY, JSON.stringify(Array.from(set)));
+    }
+    document.querySelectorAll('a.btn-view[data-filename]').forEach(function (a) {
+        var fn = a.getAttribute('data-filename');
+        if (getViewed().indexOf(fn) !== -1) {
+            a.classList.add('viewed');
+        }
+        a.addEventListener('click', function () {
+            markViewed(fn);
+            a.classList.add('viewed');
+        });
+    });
+})();
+
 document.querySelectorAll('.btn-rename').forEach(btn => {
     btn.addEventListener('click', function() {
         const row = this.closest('tr');
